@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">Wechatapp</string>
+    <string name="is_active">激活小程序hook功能</string>
+    <string name="replace_target">需要替换的内容</string>
+    <string name="replace_text">要替换的内容</string>
+    <string name="save">保存</string>
+</resources>
