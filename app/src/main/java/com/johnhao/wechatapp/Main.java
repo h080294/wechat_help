@@ -74,6 +74,27 @@ public class Main implements IXposedHookLoadPackage {
             if (is_Actived) {
                 Log.d(TAG, "获取信息  Active：yes");
 
+                //version 7.0.3
+                XposedBridge.hookAllMethods(XposedHelpers.findClass("com.tencent.mm.plugin.appbrand.appcache.at", loadPackageParam.classLoader), "a", new XC_MethodHook() {
+                    protected void afterHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) throws Throwable {
+
+                        if (methodHookParam.args.length >= 2 && ((String) methodHookParam.args[1]).equals("game.js")) {
+                            Log.d(TAG, "afterHookedMethod: 开始hook微信小程序");
+                            String obj = (String) methodHookParam.getResult();
+                            saveFile(obj, "game.txt");
+                            Log.d(TAG, "开始替换逻辑: " + "\n before fix: " + replace + "\n after fix: " + replace_text);
+                            obj = obj.replace(replace, replace_text);
+                            saveFile(obj, "gamefixed.txt");
+                            methodHookParam.setResult(obj);
+                            Log.d(TAG, "Hooked End");
+                        }
+                    }
+
+                    protected void beforeHookedMethod(MethodHookParam methodHookParam) throws Throwable {
+                    }
+                });
+
+                // old version
                 XposedBridge.hookAllMethods(XposedHelpers.findClass("com.tencent.mm.plugin.appbrand.appcache.ao", loadPackageParam.classLoader), "a", new XC_MethodHook() {
                     protected void afterHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) throws Throwable {
 
