@@ -1,137 +1,61 @@
 package com.johnhao.wechatapp;
 
-import android.content.Intent;
+import android.content.ContentResolver;
+import android.content.ContentValues;
 import android.content.SharedPreferences;
-import android.os.Environment;
+import android.database.Cursor;
 import android.preference.PreferenceManager;
-import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.text.TextUtils;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
-import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.Toast;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.RandomAccessFile;
+import com.johnhao.wechatapp.adapter.DataAdapter;
+import com.johnhao.wechatapp.adapter.TextContent;
+import com.johnhao.wechatapp.util.Config;
+import java.util.ArrayList;
+import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
+import static com.johnhao.wechatapp.util.Config.CONTENT_DATA_URI;
+import static com.johnhao.wechatapp.util.Config.CONTENT_SETTING_URI;
+import static com.johnhao.wechatapp.util.Utils.getWXVerName;
+
+public class MainActivity extends AppCompatActivity implements View.OnClickListener, View.OnLongClickListener {
 
     private static final String TAG = "hookwechat";
     private SharedPreferences prefs;
     private EditText editReplaceTarget, editReplaceText;
-    private Button save;
     private CheckBox checkbox, wechatLog;
+    private RecyclerView rv;
     private SharedPreferences.Editor editor;
+    private ContentResolver resolver;
+    private String weixinVersion;
+    private List<TextContent> list = new ArrayList<>();
+    private DataAdapter dataAdapter;
+    private int position;
+    private String oTarget;
+    private String oReplace;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        init();
+        initData();
         initViews();
         checkActive();
-        prefs = PreferenceManager.getDefaultSharedPreferences(this);
-        editor = prefs.edit();
-
-        if (prefs.getInt("new", 0) == 0) {
-            initPref();
-        }
-
-        checkbox.setChecked(prefs.getString("isActive", "yes").equalsIgnoreCase("yes"));
-
-        save.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-
-                if (!checkbox.isChecked()) {
-                    Toast.makeText(MainActivity.this, "激活才能正常使用", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                String replaceTarget = editReplaceTarget.getText().toString();
-                String replaceText = editReplaceText.getText().toString();
-
-                if (TextUtils.isEmpty(replaceTarget) || TextUtils.isEmpty(replaceText)) {
-                    Toast.makeText(MainActivity.this, "输入不能为空", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                editor.putString("replace_target", replaceTarget);
-                editor.putString("replace_text", replaceText);
-                editor.apply();
-
-                Intent intent = new Intent("com.johnhao.wechatapp.SETTING_CHANGED");
-                intent.putExtra("replace_target", replaceTarget);
-                intent.putExtra("replace_text", replaceText);
-                intent.putExtra("isActive", prefs.getString("isActive", "yes"));
-                intent.putExtra("logOpen", prefs.getString("logOpen", "no"));
-                sendBroadcast(intent);
-
-                String isActive = "isActive:" + prefs.getString("isActive", "yes") + "\r\n";
-                String logOpen = "logOpen:" + prefs.getString("logOpen", "no") + "\r\n";
-                String replace_target = "replace_target:" + replaceTarget + "\r\n";
-                String replace_text = "replace_text:" + replaceText + "\r\n";
-                String config = isActive + logOpen + replace_target + replace_text;
-//                saveConfig(config);
-                writeFileToSDCard(config.getBytes(), null, "config.txt", false, false);
-                Toast.makeText(MainActivity.this, "设置成功", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-
-        checkbox.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                if (isChecked) {
-                    editor.putString("isActive", "yes");
-
-                } else {
-                    editor.putString("isActive", "no");
-                }
-                editor.apply();
-            }
-        });
-
-        wechatLog.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-
-                if (isChecked) {
-                    editor.putString("logOpen", "yes");
-
-                } else {
-                    editor.putString("logOpen", "no");
-                }
-                editor.apply();
-            }
-        });
-
+        checkWeixinVersion();
     }
 
     private boolean isModuleActive() {
         return false;
-    }
-
-    private void initViews() {
-        editReplaceTarget = findViewById(R.id.replace_target);
-        editReplaceText = findViewById(R.id.replace_text);
-        save = findViewById(R.id.btn_save);
-        checkbox = findViewById(R.id.ischecked);
-        wechatLog = findViewById(R.id.wechectlog);
-    }
-
-    private void initPref() {
-        // 首次安装，写入默认数据
-        editor.putInt("new", 1);
-        editor.putString("isActive", "yes");
-        editor.putString("logOpen", "no");
-        editor.putString("replace_target", "this.diamonds-t");
-        editor.putString("replace_text", "this.diamonds-t");
-        checkbox.setChecked(true);
     }
 
     private void checkActive() {
@@ -142,88 +66,225 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void initViews() {
+        editReplaceTarget = findViewById(R.id.replace_target);
+        editReplaceText = findViewById(R.id.replace_text);
+        Button save = findViewById(R.id.btn_save);
+        checkbox = findViewById(R.id.ischecked);
+        wechatLog = findViewById(R.id.wechectlog);
+        checkbox.setOnClickListener(this);
+        wechatLog.setOnClickListener(this);
+        checkbox.setChecked(prefs.getString("isActive", "no").equalsIgnoreCase("yes"));
+        wechatLog.setChecked(prefs.getString("logOpen", "no").equals("yes"));
+        save.setOnClickListener(this);
 
-    public static boolean isSdCardExist() {
-        return Environment.getExternalStorageState().equals(
-                Environment.MEDIA_MOUNTED);
+        rv = findViewById(R.id.recycle_view);
+        LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+        rv.setLayoutManager(layoutManager);
+        dataAdapter = new DataAdapter(this, list);
+        rv.setAdapter(dataAdapter);
+
     }
 
-    /* 此方法为android程序写入sd文件文件，用到了android-annotation的支持库@
-    * @param buffer   写入文件的内容
-    * @param folder   保存文件的文件夹名称,如log；可为null，默认保存在sd卡根目录
-    * @param fileName 文件名称，默认app_log.txt
-    * @param append   是否追加写入，true为追加写入，false为重写文件
-    * @param autoLine 针对追加模式，true为增加时换行，false为增加时不换行
-    */
-    public synchronized static void writeFileToSDCard(@Nullable final byte[] buffer, @Nullable final String folder,
-                                                      @Nullable final String fileName, final boolean append, final boolean autoLine) {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                boolean sdCardExist = Environment.getExternalStorageState().equals(
-                        android.os.Environment.MEDIA_MOUNTED);
-                String folderPath = "";
-                if (sdCardExist) {
-                    //TextUtils为android自带的帮助类
-                    if (TextUtils.isEmpty(folder)) {
-                        //如果folder为空，则直接保存在sd卡的根目录
-                        folderPath = Environment.getExternalStorageDirectory()
-                                + File.separator;
-                    } else {
-                        folderPath = Environment.getExternalStorageDirectory()
-                                + File.separator + folder + File.separator;
-                    }
+    private void init() {
+        prefs = PreferenceManager.getDefaultSharedPreferences(this);
+        resolver = this.getContentResolver();
+        editor = prefs.edit();
+        weixinVersion = getWXVerName(this);
+
+        if (prefs.getInt("new", 0) != 0) {
+            return;
+        }
+
+        // 首次安装，写入默认数据
+        editor.putInt("new", 1);
+        editor.putString("isActive", "no");
+        editor.putString("logOpen", "no");
+        editor.putString("weixinVersion", weixinVersion);
+        editor.apply();
+
+        // 初始化设置
+        initSetting();
+    }
+
+    private void initSetting() {
+        ContentValues values = new ContentValues();
+        values.put(Config.NAME, "isActive");
+        values.put(Config.VALUE, "no");
+        resolver.insert(CONTENT_SETTING_URI, values);
+        values.clear();
+
+        values.put(Config.NAME, "logOpen");
+        values.put(Config.VALUE, "no");
+        resolver.insert(CONTENT_SETTING_URI, values);
+        values.clear();
+
+        String weixinVersion = getWXVerName(this);
+        values.put(Config.NAME, "weixinVersion");
+        values.put(Config.VALUE, weixinVersion);
+        resolver.insert(CONTENT_SETTING_URI, values);
+        values.clear();
+
+    }
+
+    private void checkWeixinVersion() {
+
+        if (weixinVersion.equals(prefs.getString("weixinVersion", ""))) {
+            return;
+        }
+
+        updateSetting("weixinVersion", weixinVersion);
+
+    }
+
+    private void initData() {
+
+        Cursor cursor = resolver.query(CONTENT_DATA_URI, new String[]{"name", "value"}, null, null, null);
+
+        if (cursor == null) {
+            Log.d(TAG, "数据库中没有数据 ");
+            insertData("Text to be replace", "Replace text");
+            return;
+        }
+
+        Log.d(TAG, "数据库：" + cursor.getCount() + "条记录");
+
+        if (cursor.moveToFirst()) {
+            do {
+                String name = cursor.getString(cursor.getColumnIndex("name"));
+                String value = cursor.getString(cursor.getColumnIndex("value"));
+                TextContent textContent = new TextContent(name, value);
+                list.add(textContent);
+            } while (cursor.moveToNext());
+        }
+
+        cursor.close();
+
+        if (list.size() == 0) {
+            TextContent textContent = new TextContent("示例：被替换内容", "示例：要替换内容");
+            list.add(textContent);
+        }
+
+
+    }
+
+    @Override
+    public void onClick(View v) {
+        switch (v.getId()) {
+            case R.id.ischecked:
+                if (!checkbox.isChecked()) {
+                    editor.putString("isActive", "no");
+                    updateSetting("isActive", "no");
                 } else {
+                    editor.putString("isActive", "yes");
+                    updateSetting("isActive", "yes");
+                }
+                editor.apply();
+                break;
+            case R.id.wechectlog:
+                if (!wechatLog.isChecked()) {
+                    editor.putString("logOpen", "no");
+                    updateSetting("logOpen", "no");
+                } else {
+                    editor.putString("logOpen", "yes");
+                    updateSetting("logOpen", "yes");
+                }
+                editor.apply();
+                break;
+            case R.id.btn_update:
+                // do clear
+                // textview
+                // 删db
+                String replaceTarget = editReplaceTarget.getText().toString();
+                String replaceText = editReplaceText.getText().toString();
+
+                if (TextUtils.isEmpty(replaceTarget) || TextUtils.isEmpty(replaceText)) {
+                    Toast.makeText(MainActivity.this, "输入不能为空", Toast.LENGTH_SHORT).show();
                     return;
                 }
 
-                File fileDir = new File(folderPath);
-                if (!fileDir.exists()) {
-                    if (!fileDir.mkdirs()) {
-                        return;
-                    }
-                }
-                File file;
+                // 更新db
+                insertData(replaceTarget, replaceText);
 
-                //判断文件名是否为空
-                if (TextUtils.isEmpty(fileName)) {
-                    file = new File(folderPath + "app_log.txt");
-                } else {
-                    file = new File(folderPath + fileName);
+                //清空view
+                editReplaceTarget.setText("");
+                editReplaceText.setText("");
+
+                // 更新adapter
+                TextContent textContent = new TextContent(replaceTarget,replaceText);
+                dataAdapter.addData(0, textContent);
+
+                Toast.makeText(this, "更新了数据" + position, Toast.LENGTH_SHORT).show();
+                break;
+            case R.id.btn_save:
+                replaceTarget = editReplaceTarget.getText().toString();
+                replaceText = editReplaceText.getText().toString();
+
+                if (TextUtils.isEmpty(replaceTarget) || TextUtils.isEmpty(replaceText)) {
+                    Toast.makeText(MainActivity.this, "输入不能为空", Toast.LENGTH_SHORT).show();
+                    return;
                 }
-                RandomAccessFile raf = null;
-                FileOutputStream out = null;
-                try {
-                    if (append) {
-                        //如果为追加则在原来的基础上继续写文件
-                        raf = new RandomAccessFile(file, "rw");
-                        raf.seek(file.length());
-                        raf.write(buffer);
-                        if (autoLine) {
-                            raf.write("\n".getBytes());
-                        }
-                    } else {
-                        //重写文件，覆盖掉原来的数据
-                        out = new FileOutputStream(file);
-                        out.write(buffer);
-                        out.flush();
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace();
-                } finally {
-                    try {
-                        if (raf != null) {
-                            raf.close();
-                        }
-                        if (out != null) {
-                            out.close();
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }
-        }).start();
+
+                // 更新db
+                insertData(replaceTarget, replaceText);
+
+                //清空view
+                editReplaceTarget.setText("");
+                editReplaceText.setText("");
+
+                // 更新adapter
+                TextContent textContent1 = new TextContent(replaceTarget,replaceText);
+                dataAdapter.addData(0, textContent1);
+
+                Toast.makeText(this, "插入了数据", Toast.LENGTH_SHORT).show();
+
+                break;
+        }
+
+    }
+
+    @Override
+    public boolean onLongClick(View v) {
+        return false;
+    }
+
+    private void updateSetting(String name, String value) {
+        ContentValues values = new ContentValues();
+        values.put(Config.NAME, name);
+        values.put(Config.VALUE, value);
+        String[] selectValue = {name};
+        resolver.update(CONTENT_SETTING_URI, values, "name=?", selectValue);
+        values.clear();
+    }
+
+    public void updataData(String name, String value) {
+        ContentValues values = new ContentValues();
+        values.put(Config.NAME, name);
+        values.put(Config.VALUE, value);
+        String[] selectValue = {name};
+        resolver.update(CONTENT_DATA_URI, values, "name=?", selectValue);
+    }
+
+    private void insertData(String name, String value) {
+        ContentValues values = new ContentValues();
+        values.put(Config.NAME, name);
+        values.put(Config.VALUE, value);
+        resolver.insert(CONTENT_DATA_URI, values);
+        values.clear();
+    }
+
+    public void deleteData(String name) {
+        String[] selectValue = {name};
+        resolver.delete(CONTENT_DATA_URI, "name=?", selectValue);
+    }
+
+    public void setInputText(String target, String replcae, int position) {
+        this.position = position;
+        this.oTarget = target;
+        this.oTarget = replcae;
+
+        editReplaceTarget.setText(target);
+        editReplaceText.setText(replcae);
     }
 
 }

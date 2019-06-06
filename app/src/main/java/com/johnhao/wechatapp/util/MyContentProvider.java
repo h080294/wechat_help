@@ -1,4 +1,4 @@
-package com.johnhao.wechatapp;
+package com.johnhao.wechatapp.util;
 
 import android.content.ContentProvider;
 import android.content.ContentUris;
@@ -9,27 +9,26 @@ import android.database.SQLException;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteQueryBuilder;
 import android.net.Uri;
-import android.text.TextUtils;
-
 import java.util.HashMap;
 import java.util.Objects;
+import static com.johnhao.wechatapp.util.Config.CONFIG_TABLE_NAME;
+import static com.johnhao.wechatapp.util.Config.CONTENT_DATA_URI;
+import static com.johnhao.wechatapp.util.Config.CONTENT_SETTING_URI;
+import static com.johnhao.wechatapp.util.Config.DATA_TABLE_NAME;
 
-import static com.johnhao.wechatapp.Config.PATH_MULTIPLE;
-import static com.johnhao.wechatapp.Config.PATH_SINGLE;
 
 public class MyContentProvider extends ContentProvider {
 
 
     // 数据库帮助类
     private DatabaseHelper databaseHelper;
-    public static final String CONFIG_TABLE_NAME = "setting";
 
     // Uri工具类
     private static final UriMatcher uriMatcher;
 
     // 查询、更新条件
-    private static final int MULTIPLE = 1;
-    private static final int SINGLE = 2;
+    private static final int SETTING = 1;
+    private static final int DATAS = 2;
 
     // 查询列集合
     private static HashMap<String, String> configMap;
@@ -38,8 +37,11 @@ public class MyContentProvider extends ContentProvider {
     static {
         // Uri匹配工具类
         uriMatcher = new UriMatcher(UriMatcher.NO_MATCH);
-        uriMatcher.addURI(Config.AUTHORITY, PATH_MULTIPLE, MULTIPLE);
-        uriMatcher.addURI(Config.AUTHORITY, PATH_SINGLE, SINGLE);
+        uriMatcher.addURI(Config.AUTHORITY, CONFIG_TABLE_NAME, SETTING);
+//        uriMatcher.addURI(Config.AUTHORITY, CONFIG_TABLE_NAME, SINGLE);
+
+        uriMatcher.addURI(Config.AUTHORITY, DATA_TABLE_NAME, DATAS);
+//        uriMatcher.addURI(Config.AUTHORITY, DATA_TABLE_NAME, SINGLE);
 
         // 实例化查询列集合
         configMap = new HashMap<String, String>();
@@ -47,6 +49,8 @@ public class MyContentProvider extends ContentProvider {
         // 添加查询列
         configMap.put(Config.NAME, Config.NAME);
         configMap.put(Config.VALUE, Config.VALUE);
+
+
     }
 
     @Override
@@ -65,16 +69,29 @@ public class MyContentProvider extends ContentProvider {
         SQLiteDatabase db = databaseHelper.getWritableDatabase();
 
 
-        // 插入数据，返回行ID
-//        long rowId = db.insertOrThrow(CONFIG_TABLE_NAME, null, values);
-        long rowId = db.insertWithOnConflict(CONFIG_TABLE_NAME, Config._ID, values, SQLiteDatabase.CONFLICT_IGNORE);
+        switch (uriMatcher.match(uri)) {
+            case SETTING:
+                long rowId = db.insertWithOnConflict(CONFIG_TABLE_NAME, Config._ID, values, SQLiteDatabase.CONFLICT_IGNORE);
 
-        // 如果插入成功返回uri
-        if (rowId > 0) {
-            Uri empUri = ContentUris.withAppendedId(Config.CONTENT_URI, rowId);
-            Objects.requireNonNull(getContext()).getContentResolver().notifyChange(empUri, null);
-            return empUri;
+                // 如果插入成功返回uri
+                if (rowId > 0) {
+                    Uri empUri = ContentUris.withAppendedId(CONTENT_SETTING_URI, rowId);
+                    Objects.requireNonNull(getContext()).getContentResolver().notifyChange(empUri, null);
+                    return empUri;
+                }
+                break;
+            case DATAS:
+                rowId = db.insertWithOnConflict(DATA_TABLE_NAME, Config._ID, values, SQLiteDatabase.CONFLICT_IGNORE);
+
+                // 如果插入成功返回uri
+                if (rowId > 0) {
+                    Uri empUri = ContentUris.withAppendedId(CONTENT_DATA_URI, rowId);
+                    Objects.requireNonNull(getContext()).getContentResolver().notifyChange(empUri, null);
+                    return empUri;
+                }
+                break;
         }
+
         throw new SQLException("failed to insert row into " + uri);
     }
 
@@ -83,18 +100,15 @@ public class MyContentProvider extends ContentProvider {
     public Cursor query(Uri uri, String[] projection, String selection,
                         String[] selectionArgs, String sortOrder) {
         SQLiteQueryBuilder qb = new SQLiteQueryBuilder();
-        qb.setTables(CONFIG_TABLE_NAME);
+        qb.setProjectionMap(configMap);
+
 
         switch (uriMatcher.match(uri)) {
-            // 查询所有
-            case MULTIPLE:
-                qb.setProjectionMap(configMap);
+            case SETTING:
+                qb.setTables(CONFIG_TABLE_NAME);
                 break;
-
-//             根据ID查询
-            case SINGLE:
-                qb.setProjectionMap(configMap);
-                qb.appendWhere(Config._ID + "=" + uri.getPathSegments().get(1));
+            case DATAS:
+                qb.setTables(DATA_TABLE_NAME);
                 break;
             default:
                 throw new IllegalArgumentException("Uri错误！ " + uri);
@@ -117,17 +131,12 @@ public class MyContentProvider extends ContentProvider {
         // 获得数据库实例
         int count;
         switch (uriMatcher.match(uri)) {
-            // 根据指定条件删除
-            case MULTIPLE:
+            case SETTING:
                 count = db.delete(CONFIG_TABLE_NAME, selection, selectionArgs);
                 break;
-            // 根据指定条件和ID删除
-            case SINGLE:
-                String noteId = uri.getPathSegments().get(1);
-                count = db.delete(CONFIG_TABLE_NAME, Config._ID + "=" + noteId
-                        + (!TextUtils.isEmpty(selection) ? " AND (" + selection + ')' : ""), selectionArgs);
+            case DATAS:
+                count = db.delete(DATA_TABLE_NAME, selection, selectionArgs);
                 break;
-
             default:
                 throw new IllegalArgumentException("错误的 URI " + uri);
         }
@@ -152,13 +161,12 @@ public class MyContentProvider extends ContentProvider {
 
         switch (uriMatcher.match(uri)) {
             // 根据指定条件更新
-            case MULTIPLE:
+            case SETTING:
                 count = db.update(CONFIG_TABLE_NAME, values, selection, selectionArgs);
                 break;
             // 根据指定条件和ID更新
-            case SINGLE:
-                String segment = uri.getPathSegments().get(1);
-                count = db.update(CONFIG_TABLE_NAME, values, Config.KEY_ID + "=" + segment, selectionArgs);
+            case DATAS:
+                count = db.update(DATA_TABLE_NAME, values, selection, selectionArgs);
                 break;
             default:
                 throw new IllegalArgumentException("错误的 URI " + uri);
