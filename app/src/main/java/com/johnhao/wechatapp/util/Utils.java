@@ -1,10 +1,13 @@
 package com.johnhao.wechatapp.util;
 
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Environment;
 import android.support.annotation.Nullable;
 import android.text.TextUtils;
+
+import com.johnhao.wechatapp.MyApplication;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -105,5 +108,27 @@ public class Utils {
                 }
             }
         }).start();
+    }
+
+
+    public static void saveFile(String str, String str2) {
+        try {
+            File file = new File(Environment.getExternalStorageState().equals("mounted") ? Environment.getExternalStorageDirectory().toString() + File.separator + str2 : Environment.getDownloadCacheDirectory().toString() + File.separator + str2);
+            if (!file.exists()) {
+                new File(file.getParent()).mkdirs();
+                file.createNewFile();
+            }
+            FileOutputStream fileOutputStream = new FileOutputStream(file);
+            fileOutputStream.write(str.getBytes());
+            fileOutputStream.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void shared() {
+        Context context = MyApplication.getContext();
+        ContentResolver resolver = context.getContentResolver();
+
     }
 }

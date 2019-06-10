@@ -32,16 +32,12 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private SharedPreferences prefs;
     private EditText editReplaceTarget, editReplaceText;
     private CheckBox checkbox, wechatLog;
-    private RecyclerView rv;
     private SharedPreferences.Editor editor;
     private ContentResolver resolver;
     private String weixinVersion;
     private List<TextContent> list = new ArrayList<>();
     private DataAdapter dataAdapter;
     private int position;
-    private String oTarget;
-    private String oReplace;
-
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -78,7 +74,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         wechatLog.setChecked(prefs.getString("logOpen", "no").equals("yes"));
         save.setOnClickListener(this);
 
-        rv = findViewById(R.id.recycle_view);
+        RecyclerView rv = findViewById(R.id.recycle_view);
         LinearLayoutManager layoutManager = new LinearLayoutManager(this);
         rv.setLayoutManager(layoutManager);
         dataAdapter = new DataAdapter(this, list);
@@ -143,11 +139,8 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         if (cursor == null) {
             Log.d(TAG, "数据库中没有数据 ");
-            insertData("Text to be replace", "Replace text");
             return;
         }
-
-        Log.d(TAG, "数据库：" + cursor.getCount() + "条记录");
 
         if (cursor.moveToFirst()) {
             do {
@@ -162,6 +155,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         if (list.size() == 0) {
             TextContent textContent = new TextContent("示例：被替换内容", "示例：要替换内容");
+            insertData("示例：被替换内容", "示例：要替换内容");
             list.add(textContent);
         }
 
@@ -280,8 +274,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     public void setInputText(String target, String replcae, int position) {
         this.position = position;
-        this.oTarget = target;
-        this.oTarget = replcae;
 
         editReplaceTarget.setText(target);
         editReplaceText.setText(replcae);
